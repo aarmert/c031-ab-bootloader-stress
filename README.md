@@ -28,7 +28,8 @@ the UART, turquoise is NRST, purple is GND.</em></p>
 [Results](#results) ·
 [Normal vs negative control](#normal-measurement-vs-negative-control) ·
 [Statistics](#statistics) ·
-[What this does not show](#what-this-does-not-show) ·
+[What this does not show (yet)](#what-this-does-not-show-yet) ·
+[Next steps](#next-steps) ·
 [Try it without hardware](#try-it-without-hardware) ·
 [With hardware](#running-it-on-the-hardware) ·
 [Repo layout](#repo-layout)
@@ -270,19 +271,20 @@ rate, which also depends on how often power is lost and when. The points were ch
 not at random: the critical moments were hit far more often than random resets would hit them. That
 makes the test harder, but it means the number should not be read as a random-sample estimate.
 
-## What this does not show
+## What this does not show (yet)
 
-- **Real power loss.** A reset keeps RAM, so the "update in progress" flag survives it. A power cut
-  loses that, and the flash may behave differently while the supply falls. That needs a separate
-  experiment (cutting power with a MOSFET).
+- **Real power loss. This is the next experiment.** A reset keeps RAM, so the "update in progress"
+  flag survives it. A power cut loses that, and the flash may behave differently while the supply
+  falls. The plan is the same sweep with the reset replaced by a power cut: the ESP32-S3 switches the
+  board's supply through a MOSFET at the same planned moments, and the bootloader has to recover from
+  flash alone. Those results will be published here when they are in. See [Next steps](#next-steps).
 - **Other boards.** One NUCLEO-C031C6 was used.
 - **The release build.** The sweeps ran on the test build of the bootloader, with fault-injection hooks.
   Sweep 2 does not use the hook, but the same build was on the chip.
 - **Recovery without a PC.** The PC finishes a `PENDING` update. In the field an update client has to do
   that.
 - **Security.** There is no digital signature. SHA-256 protects integrity, not authenticity.
-- **The test's own blind spots.** The next step is a mutation test: break the A/B bootloader on purpose
-  (for example, write the header before the data) and check that the sweep reports `WRONG`.
+- **The test's own blind spots.** A mutation test is planned for that (see [Next steps](#next-steps)).
 
 Two details from the logs: in 9 sweep-1 trials the two UART copies of a line differed, all in the BOOT
 phase at ~15.5–16.1 ms, where the reset cut the bootloader's banner in the middle of a character (all
@@ -291,6 +293,15 @@ while the PC was sending the next DATA line, and the freshly booted bootloader a
 with `ERR LINE`. The line protocol (per-line CRC, stop-and-wait, replayable packets) is built for this.
 Flash wear after the day: slot pages erased 2670 (A) and 2705 (B) times; the C031 is rated for at least
 10 000.
+
+## Next steps
+
+1. **Power-cut sweep.** Repeat the sweep with a MOSFET cutting the supply instead of pulling NRST. The
+   RAM "update in progress" flag is lost, so this tests recovery from flash alone, and the flash sees a
+   falling supply mid-write.
+2. **Mutation test.** Break the A/B bootloader on purpose (for example, write the header before the
+   data) and check that the sweep reports `WRONG`.
+3. **More boards and the release build** without the fault-injection hooks.
 
 ## Try it without hardware
 

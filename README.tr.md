@@ -55,10 +55,19 @@ hatalı olsaydı 3103 denemede hiç hata görmeme ihtimali 0,69^3103 ≈ 10^-500
 
 Bu oran "bu tarama dağılımında deneme başına" bir oran, sahadaki arıza oranı değil.
 
-## Bu test neyi göstermiyor?
+## Bu test neyi (henüz) göstermiyor?
 
-Gerçek elektrik kesintisini (resette RAM korunur), başka kartları (tek kart), satış sürümünü (hook'lu test
-sürümü kullanıldı), PC'siz kurtarmayı ve güvenliği (dijital imza yok).
+Başka kartları (tek kart), satış sürümünü (hook'lu test sürümü kullanıldı), PC'siz kurtarmayı ve güvenliği
+(dijital imza yok).
+
+## Sıradaki deney: gerçek elektrik kesintisi
+
+Resette RAM korunur, "güncelleme sürüyor" bayrağı resetten sağ çıkar. Elektrik kesilince bu bilgi kaybolur
+ve besleme düşerken flash farklı davranabilir. Sıradaki deney aynı tarama, ama reset yerine ESP32-S3'ün bir
+MOSFET ile kartın beslemesini aynı planlı anlarda kesmesiyle. Bootloader yalnızca flash'taki bilgiyle
+toparlanmak zorunda kalacak. Sonuçlar hazır olunca bu repoda yayınlanacak. Ardından mutasyon testi gelecek:
+A/B bootloader bilerek bozulacak (ör. başlık veriden önce yazılacak) ve taramanın bunu `WRONG` olarak
+yakaladığı gösterilecek.
 
 ## Donanımsız deneme
 
