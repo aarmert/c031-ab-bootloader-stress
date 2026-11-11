@@ -1,0 +1,35 @@
+[project]
+name = "c031-ab-bootloader-stress"
+version = "0.1.0"
+description = "Reset-injection stress test for an A/B bootloader on the NUCLEO-C031C6, with a naive bootloader as the negative control"
+readme = "README.md"
+# bench.py needs 3.11 (tomllib); the stress tool needs 3.12.
+requires-python = ">=3.12"
+dependencies = [
+    "pyserial>=3.5",
+]
+
+[dependency-groups]
+# stress/plot.py and scripts/make_figures.py
+plot = [
+    "matplotlib>=3.8",
+]
+# ESP32 flashing/REPL tools for the human
+esp32 = [
+    "esptool>=4.7",
+    "mpremote>=1.22",
+]
+dev = [
+    "ruff>=0.6",
+]
+
+[tool.uv]
+# Scripts run from the repo root (python -m stress); nothing to build or install.
+package = false
+default-groups = "all"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+lint.select = ["E4", "E7", "E9", "F"]
+extend-exclude = ["firmware/boot/build", "firmware/boot_c0/build", "esp32/build"]

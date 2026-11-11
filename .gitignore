@@ -1,0 +1,10 @@
+__pycache__/
+.venv/
+.ruff_cache/
+firmware/boot/build/
+firmware/boot_c0/build/
+esp32/build/
+stress_runs/
+bench-c031.toml
+bench.toml
+stress.toml
