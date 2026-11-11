@@ -518,6 +518,7 @@ class OpenOCD(Programmer):
 
 SIM_UID = "0033002A3438511234363632"
 SIM_FW_VERSION = "1.2.0"
+SIM_BOOT_MS = 5  # ms the simulated board has been running when it prints BOOT (a real F407 needs a few ms)
 
 
 class SimBoard:
@@ -553,7 +554,9 @@ class SimBoard:
 
     def reset(self, cause="PIN,SFT"):
         self.crashed = False
-        self.boot_t = time.time()
+        # Start the counter as if the boot already took SIM_BOOT_MS. The sim answers instantly, so without
+        # this a TICK right after reset could read 0 and fail the smoke range [1, 600000].
+        self.boot_t = time.time() - SIM_BOOT_MS / 1000
         self.green = 2.0
         if self.image:
             self.out.append(f"BOOT stm32bench-fw v{SIM_FW_VERSION} reset={cause}")
