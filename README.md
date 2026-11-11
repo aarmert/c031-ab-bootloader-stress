@@ -373,17 +373,21 @@ uv run python -m stress --json report stress_runs/<run-folder> --plot
 The tests are `basic`, `transfer_cut`, `line_noise`, `reset_random`, `reset_sweep`, `double_fault`,
 `bad_image`, `rollback` and `naive_control`. [`stress/README.md`](stress/README.md) describes each one,
 how a trial runs and how outcomes are classified. `bench.py` is the flashing/serial layer the stress
-tool imports (it comes from tezgah-lab, where it also drives an F407 functional test bench).
+tool imports. It is a copy of `bench.py` from [f407-hil-bench](https://github.com/aarmert/f407-hil-bench),
+where it is maintained and also drives the F407 functional test bench; it is included here so this repo
+runs on its own.
 
 ## Repo layout
 
 | Path | What |
 |---|---|
 | `stress/` | the host tool: planner, runner, classifier, simulator, report (`python -m stress`) |
-| `bench.py` | flashing, SWD read-back and serial layer used by `stress/` |
+| `bench.py` | flashing, SWD read-back and serial layer used by `stress/` (a copy from f407-hil-bench, unchanged) |
 | `firmware/boot_c0/` | A/B and naive bootloaders, test apps and image builder for the C031 |
 | `firmware/boot/` | the F407 port of the same (simulator only; also supplies the wrong-board image) |
+| `firmware/wiretest_c031/` | a small wiring check for the C031 bench, not part of the stress system |
 | `esp32/` | the ESP32-S3 line bridge with the timed NRST pulse |
+| `AGENTS.md`, `CLAUDE.md` | rules for a coding agent driving this bench (touch the board only through `python -m stress`) |
 | `docs/spec/` | the specs: `SPEC.md`, `SPEC-C031C6.md`, `SPEC-ESP32.md`, and the slide deck `sunum.html` (Turkish) |
 | `docs/pdf/` | the Turkish 3103-trial report and the training booklet |
 | `docs/img/` | the bench photo and the figures |
