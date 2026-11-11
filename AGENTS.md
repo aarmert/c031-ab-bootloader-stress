@@ -10,7 +10,7 @@ This repo is the NUCLEO-C031C6 bootloader stress bench. Touch the board only thr
 - `firmware/boot_c0/`, `firmware/boot/`: stress-test bootloaders + apps for the C031 and the F407
 - `firmware/wiretest_c031/`: a small wiring check for the C031 bench
 - `esp32/bridge/`, `esp32/build.py`: the ESP32-S3 line bridge with a timed NRST
-- `docs/spec/`: the stress-test specs (`SPEC.md` + `SPEC-C031C6.md` + `SPEC-ESP32.md`) and the results deck
+- `docs/spec/`: the stress-test specs (`SPEC.md` + `SPEC-C031C6.md` + `SPEC-ESP32.md`)
 - `results/`: the published hardware runs of 2026-11-07
 
 ## Hardware

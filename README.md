@@ -9,7 +9,7 @@ flash back over SWD and decided from the flash contents what had happened.
 
 | | Result |
 |---|---|
-| A/B bootloader, reset-injected updates | **0 failures in 3103 trials** (95% upper bound on the failure rate: **0.097%**) |
+| A/B bootloader, reset-injected updates | **0 failures in 3103 trials** (95% upper bound per trial under this sweep: **0.097%**, see [Statistics](#statistics)) |
 | Naive bootloader (negative control), same ESP32 resets | **11 of 20** trials booted a corrupt image, and the tool flagged every one |
 | Wall-clock time | two unattended 2-hour sweeps plus 131 shorter trials, about 4.5–4.8 s per trial |
 
@@ -28,25 +28,26 @@ the UART, turquoise is NRST, purple is GND.</em></p>
 [Results](#results) ·
 [Normal vs negative control](#normal-measurement-vs-negative-control) ·
 [Statistics](#statistics) ·
-[What this does not show (yet)](#what-this-does-not-show-yet) ·
 [Next steps](#next-steps) ·
 [Try it without hardware](#try-it-without-hardware) ·
 [With hardware](#running-it-on-the-hardware) ·
 [Repo layout](#repo-layout)
 
 This project was split out of [aarmert/tezgah-lab](https://github.com/aarmert/tezgah-lab), a
-hardware-in-the-loop test bench for STM32 boards. The full Turkish report is
-[`docs/pdf/tezgah-3000-deneme-raporu.pdf`](docs/pdf/tezgah-3000-deneme-raporu.pdf).
+hardware-in-the-loop test bench for STM32 boards.
 
 ## How the A/B bootloader works
 
-The 32 KB of flash holds the bootloader, two image slots (A and B) and an append-only meta log.
+The 32 KB of flash holds the bootloader, two image slots (A and B) and an append-only meta log. The
+meta log is a list of 32-byte records. The newest record with a valid CRC holds the state: which slot
+is active, whether the other slot is on trial, and how many trial boots it has had.
 
 - A new image is always written to the **inactive** slot. The running image is never touched.
 - The marks that make the new image valid (the header CRC and the CRC word of the meta record) are
   **always written last**. Work that a reset cuts short has no mark, and the bootloader ignores it.
-- The new image boots as a **trial**. The app has about one second to confirm itself. If it does not,
-  the watchdog resets it, and after three failed attempts the bootloader rolls back to the old slot.
+- The new image boots as a **trial**. After 1 s of healthy running the app writes a CONFIRM record. An
+  app that has not confirmed within 5 s stops feeding the watchdog, which resets it about 2 s later.
+  After three failed attempts the bootloader rolls back to the old slot.
 - Every image is checked with CRC32 on every boot. After the transfer, the bootloader also checks the
   whole image with CRC32 and SHA-256 before it writes the header.
 
@@ -55,12 +56,12 @@ image or the new one. It never runs a half-written image and never ends up with 
 
 ```mermaid
 flowchart LR
-    E["ERASE<br/>erase inactive slot<br/>88 ms"] --> D["DATA ×34<br/>write packets<br/>~1.1 s"]
-    D --> V["UPD END<br/>read back,<br/>CRC32 + SHA-256"]
+    E["ERASE<br/>erase inactive slot<br/>88 ms"] --> D["DATA k, k = 0..33<br/>write packet k (192 B)<br/>~1.1 s with the UART transfer"]
+    D --> V["check after UPD END<br/>read back,<br/>CRC32 + SHA-256<br/>(no phase of its own)"]
     V --> H["HDR<br/>write header (last)<br/>2.8 ms"]
     H --> T["META: TRIAL<br/>CRC word last<br/>0.36 ms"]
-    T --> B["BOOT<br/>trial boot<br/>~16 ms"]
-    B --> C["CONFIRM<br/>app healthy 1 s"]
+    T --> B["BOOT<br/>boot decision ~16 ms,<br/>then META: ATTEMPT"]
+    B --> C["CONFIRM<br/>app healthy 1 s,<br/>then META: CONFIRM"]
     E -. reset .-> P1["PENDING or OLD"]
     D -. reset .-> P1
     V -. reset .-> P1
@@ -71,6 +72,27 @@ flowchart LR
 ```
 
 *Expected outcome of a reset in each phase. Timings were measured on this board.*
+
+The names in the boxes are the **phases** used in the results table and the figures below. Each one
+is a point in the firmware where the planned reset delay starts counting ([SPEC §6.2](docs/spec/SPEC.md)):
+
+| Phase | Where the delay starts | Measured length | In the figures |
+|---|---|---|---|
+| ERASE | the erase of the inactive slot (4 pages) begins | 88.1 ms | |
+| DATA k | the flash write of packet k begins | 2.12 ms each, 34 packets | k is the y axis of the DATA panels |
+| HDR | the header write begins | 2.83 ms | |
+| META | a record is appended to the meta log | 0.36 ms | the y axis of the META panel is the record: **TRIAL** (end of the update; its CRC word is the commit), **ATTEMPT** (the bootloader, just before a trial boot), **CONFIRM** (the app, after 1 s) |
+| BOOT | the bootloader starts, before its boot decision | ~16 ms | |
+| CONFIRM | in the app, just before it writes CONFIRM | ~2.1 ms | |
+
+The firmware has two more phases that the sweeps barely touch: ROTATE (a meta page is erased when the
+log is full) and JUMP (right before the jump to the app).
+
+The ESP32 in sweep 2 can only fire after a line it sees on the UART, so its points are counted from
+`UPD BEGIN` (ERASE), from packet k (DATA k) and from `UPD END` (HDR). Its "HDR" window therefore covers
+the check, the header, the TRIAL record and the trial boot: that is why its panel switches from
+PENDING to NEW at about 30 ms, when the TRIAL record is complete. The meta log is described in full in
+[SPEC §4.1–4.3](docs/spec/SPEC.md).
 
 ### One trial
 
@@ -111,19 +133,11 @@ chance of never hitting it:           e^(−0.77) ≈ 46%
 
 So 3000 random resets would have about even odds of never touching the most critical moment. Instead,
 the length of every phase was first measured on the board (`calibrate`), then each phase was divided
-into evenly spaced points from 0 to its length, and every point became a trial. In the short phases
-(META, HDR, CONFIRM) the step is 10 µs, so every point was tried. Long phases were capped at 800
-points (in the 88 ms erase, a step of ~110 µs). The list was then shuffled with a seed, so whenever the
-run is stopped, the trials done so far are a balanced sample of all phases.
-
-| Phase | What happens | Measured length |
-|---|---|---|
-| ERASE | the 4 pages of the target slot are erased | 88.1 ms |
-| DATA k | packet k (192 bytes) is written; 34 packets | 2.12 ms each |
-| HDR | the header is written | 2.83 ms |
-| META | a meta record is appended (TRIAL, ATTEMPT, CONFIRM) | 0.36 ms |
-| BOOT | the bootloader's boot decision | ~16 ms |
-| CONFIRM | just before the app writes its confirm record | ~2.1 ms |
+into evenly spaced points from 0 to its length, and every point became a trial. This is what
+"sweep" means here: the reset is walked through each phase step by step instead of being thrown at
+random. The step is 10 µs, and long phases were capped at 800 points (in the 88 ms erase, a step of
+~110 µs). The list was then shuffled with a seed, so whenever the run is stopped, the trials done so
+far are a balanced sample of all phases.
 
 | | Sweep 1 | Sweep 2 |
 |---|---|---|
@@ -178,9 +192,13 @@ failures**.
 
 ![Each trial as a dot: reset delay within the phase vs outcome](docs/img/delay_scatter.png)
 
+*x: when the reset landed, counted from the start of the phase. y: the packet number in the DATA
+panels and the meta record in the META panel; in the other panels y has no meaning, the dots are only
+spread out so they do not overlap.*
+
 The pattern is exactly what the design predicts:
 
-- **ERASE, DATA, HDR → always PENDING.** The new slot had no valid mark yet. The bootloader kept the old
+- **Sweep 1, ERASE, DATA, HDR → always PENDING.** The new slot had no valid mark yet. The bootloader kept the old
   image, said the update was cut short, and the PC sent it again.
 - **META: TRIAL → PENDING; ATTEMPT and CONFIRM → NEW.** A reset before the TRIAL record's CRC word left
   the previous record as the newest one. During ATTEMPT and CONFIRM the new image was already on trial;
@@ -212,6 +230,14 @@ Corrupt flash appeared over 1700 times. The A/B bootloader booted none of it.
 The pulses land 2 to 15 µs (median 7 µs) after the planned moment, always late. That is the same size
 as the 10 µs sweep step.
 
+Two details from the logs: in 9 sweep-1 trials the two UART copies of a line differed, all in the BOOT
+phase at ~15.5–16.1 ms, where the reset cut the bootloader's banner in the middle of a character (all
+`NEW`, accepted). In sweep 2, 161 trials needed 319 line retransmissions: the pulse sometimes landed
+while the PC was sending the next DATA line, and the freshly booted bootloader answered the line's tail
+with `ERR LINE`. The line protocol (per-line CRC, stop-and-wait, replayable packets) is built for this.
+Flash wear after the day: slot pages erased 2670 (A) and 2705 (B) times; the C031 is rated for at least
+10 000.
+
 ## Normal measurement vs negative control
 
 A test that reports "0 failures" proves something only if it is able to report a failure. Two runs
@@ -237,7 +263,8 @@ detects exactly the failure the A/B design is supposed to prevent.
 
 In the naive run, the 8 ERASE resets that left the header in place and the DATA/HDR resets that left
 a partial image produced `WRONG`. The 7 ERASE resets that had already wiped the header left the
-bootloader with no image (`nofw`); it waited, and the resumed update finished (`PENDING`).
+bootloader with no image (`nofw`); it waited, and the resumed update finished (`PENDING`). The 2
+`NEW` were late HDR resets (15.7 and 26.7 ms after `UPD END`), when the new image was already intact.
 
 The simulator has the same pair: `reset_sweep --sim` passes 288/288 on the A/B model and
 `naive_control --sim` finds 47/60 unsafe outcomes on the naive model.
@@ -262,46 +289,23 @@ N = 3103           →   p < 0.000965   (3/N = 0.000967)  →  below 0.097%
 | **All reset-injected A/B trials** | **3103** | **0.097%** |
 
 Against the control: 11 WRONG in 20 gives a naive failure rate of 31.5%–76.9% (Clopper-Pearson, 95%),
-so at least ~31%. If the A/B bootloader failed even at 31% (a pass rate of 0.69), the chance of 0
-failures in 3103 trials would be 0.69^3103 ≈ 10^−500. The difference between the two designs is not
-luck.
+so at least ~31%.
 
 **How to read the 0.097%.** It is a rate *per trial under this sweep distribution*, not a field failure
 rate, which also depends on how often power is lost and when. The points were chosen systematically,
 not at random: the critical moments were hit far more often than random resets would hit them. That
-makes the test harder, but it means the number should not be read as a random-sample estimate.
-
-## What this does not show (yet)
-
-- **Real power loss. This is the next experiment.** A reset keeps RAM, so the "update in progress"
-  flag survives it. A power cut loses that, and the flash may behave differently while the supply
-  falls. The plan is the same sweep with the reset replaced by a power cut: the ESP32-S3 switches the
-  board's supply through a MOSFET at the same planned moments, and the bootloader has to recover from
-  flash alone. Those results will be published here when they are in. See [Next steps](#next-steps).
-- **Other boards.** One NUCLEO-C031C6 was used.
-- **The release build.** The sweeps ran on the test build of the bootloader, with fault-injection hooks.
-  Sweep 2 does not use the hook, but the same build was on the chip.
-- **Recovery without a PC.** The PC finishes a `PENDING` update. In the field an update client has to do
-  that.
-- **Security.** There is no digital signature. SHA-256 protects integrity, not authenticity.
-- **The test's own blind spots.** A mutation test is planned for that (see [Next steps](#next-steps)).
-
-Two details from the logs: in 9 sweep-1 trials the two UART copies of a line differed, all in the BOOT
-phase at ~15.5–16.1 ms, where the reset cut the bootloader's banner in the middle of a character (all
-`NEW`, accepted). In sweep 2, 161 trials needed 319 line retransmissions: the pulse sometimes landed
-while the PC was sending the next DATA line, and the freshly booted bootloader answered the line's tail
-with `ERR LINE`. The line protocol (per-line CRC, stop-and-wait, replayable packets) is built for this.
-Flash wear after the day: slot pages erased 2670 (A) and 2705 (B) times; the C031 is rated for at least
-10 000.
+makes the test harder, but it means the number should not be read as a random-sample estimate. What
+is random is the order: the plan was shuffled, so the trials that ran are a random subset of the
+planned points, and the bound holds for a reset at a randomly chosen planned point.
 
 ## Next steps
 
-1. **Power-cut sweep.** Repeat the sweep with a MOSFET cutting the supply instead of pulling NRST. The
-   RAM "update in progress" flag is lost, so this tests recovery from flash alone, and the flash sees a
-   falling supply mid-write.
-2. **Mutation test.** Break the A/B bootloader on purpose (for example, write the header before the
-   data) and check that the sweep reports `WRONG`.
-3. **More boards and the release build** without the fault-injection hooks.
+The next experiment is a power-cut sweep: the same planned moments, but the ESP32-S3 cuts the board's
+supply through a MOSFET instead of pulling NRST, so the RAM "update in progress" flag is lost and the
+bootloader has to recover from flash alone. After that come a mutation test (break the A/B bootloader
+on purpose, for example by writing the header before the data, and check that the sweep reports
+`WRONG`), runs on more boards and on the release build without the fault-injection hooks, and an
+update client on the device so a `PENDING` update can finish without the PC.
 
 ## Try it without hardware
 
@@ -388,8 +392,7 @@ runs on its own.
 | `firmware/wiretest_c031/` | a small wiring check for the C031 bench, not part of the stress system |
 | `esp32/` | the ESP32-S3 line bridge with the timed NRST pulse |
 | `AGENTS.md`, `CLAUDE.md` | rules for a coding agent driving this bench (touch the board only through `python -m stress`) |
-| `docs/spec/` | the specs: `SPEC.md`, `SPEC-C031C6.md`, `SPEC-ESP32.md`, and the slide deck `sunum.html` (Turkish) |
-| `docs/pdf/` | the Turkish 3103-trial report and the training booklet |
+| `docs/spec/` | the specs: `SPEC.md`, `SPEC-C031C6.md`, `SPEC-ESP32.md` |
 | `docs/img/` | the bench photo and the figures |
 | `results/` | the hardware runs of 2026-11-07: `trials.csv`, `summary.md`, `summary.json`, `run.json`, `serial.log` |
 | `scripts/make_figures.py` | draws `docs/img/*.png` from `results/` |

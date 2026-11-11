@@ -41,7 +41,7 @@ the target resets, so the VCP port does not disappear on a reset.
 Phase 2 (ESP32) uses **USART1 on PA9 (TX) / PA10 (RX)**, which is not on the VCP, plus an
 open-drain ESP32 GPIO to NRST, plus GND **(confirmed: PA9/PA10 are separate pins on this LQFP48 board (MB1717B). On the bench
 PA9 (D8) and PA10 (D2) are wired on the right morpho header CN10, NRST and GND on the left morpho header
-CN7, the same nets as the Arduino CN6 pins (photos in `docs/egitim/foto/`). On small C0 packages
+CN7, the same nets as the Arduino CN6 pins. On small C0 packages
 PA9/PA10 are remapped onto PA11/PA12 through SYSCFG)**. The ST-LINK also
 drives NRST; both drivers are open-drain, so they can share the line.
 

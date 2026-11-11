@@ -193,7 +193,7 @@ C031 sim (seed 1, every point): `reset_sweep` ab 288/288 accepted (167 PENDING +
 naive 98/174 WRONG; with `--reset-source esp` ab 150/150, naive 58/150 WRONG. `naive_control
 --n 60`: 47 WRONG. `reset_random --n 100` and `double_fault --n 100`: all accepted.
 
-C031 hardware (2026-11-07, `results/*_20261107-12*`, summary in `docs/spec/sunum.html`): basic
+C031 hardware (2026-11-07, `results/*_20261107-12*`): basic
 4/4 NEW; transfer_cut 10/10 OLD; line_noise at `--rate 0.2` 10/10 NEW (48 retries); bad_image 2/2;
 rollback 2/2 OLD; reset_random 20/20 with the hook and 20/20 with `--reset-source esp`; reset_sweep
 24/24 (esp, 3 phases) and 57/57 (hook, all 8 phases with `--meta-near-full`); double_fault 10/10;
